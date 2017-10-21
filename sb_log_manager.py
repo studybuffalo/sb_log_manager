@@ -73,6 +73,8 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
     """Determines next update date based on the provided criteria"""
     def convert_month_code(month_code):
         """Converts provided month code to numerical list"""
+        log.debug("Provided Month Code: {}".format(month_code))
+
         # Split comma separated codes into a list
         split_codes = month_code.split(",")
 
@@ -80,64 +82,83 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         codes = set()
 
         alpha_months = {
-                    "JAN": 1,
-                    "FEB": 2,
-                    "MAR": 3,
-                    "APR": 4,
-                    "MAY": 5,
-                    "JUN": 6,
-                    "JUL": 7,
-                    "AUG": 8,
-                    "SEP": 9,
-                    "OCT": 10,
-                    "NOV": 11,
-                    "DEC": 12
-                }
+            "JAN": 1,
+            "FEB": 2,
+            "MAR": 3,
+            "APR": 4,
+            "MAY": 5,
+            "JUN": 6,
+            "JUL": 7,
+            "AUG": 8,
+            "SEP": 9,
+            "OCT": 10,
+            "NOV": 11,
+            "DEC": 12
+        }
 
         for c in split_codes:
-            c = codes.upper().strip()
+            code = c.upper().strip()
 
-            mod_regex = re.match(r"^\*/(\d+)$", code)
-            mod_range_regex = re.match(r"^(\d+)\-(\d/+)/(\d+)")
-            alpha_regex = re.match(r"^[A-Z]+$", code)
-            alpha_range_regex = re.match(r"^([A-Z]+)\-([A-Z]+)", code)
-            num_regex = re.match(r"^\d+$", code)
-
-            if mod_regex:
+            # Run the regex matches
+            re_num = patterns["num"].match(code)
+            re_range = patterns["range"].match(code)
+            re_mod = patterns["mod"].match(code)
+            re_mod_range = patterns["mod_range"].match(code)
+            re_alpha = patterns["alpha"].match(code)
+            re_alpha_range = patterns["alpha_range"].match(code)
+            
+            if re_num:
+                # Code is numeric and be directly added
+                codes.add(int(code))
+            elif re_range:
+                # Code is range of numbers
+                first_num = int(re_range.group(1))
+                last_num = int(re_range.group(2)) + 1
+                
+                for i in range(first_num, last_num):
+                    codes.add(i)
+            elif re_mod:
                 # Add all months that match the mod function
                 i = 1
-                interval = int(mod_regex.group(1))
+                interval = int(re_mod.group(1))
 
                 while i <= 12:
                     codes.add(i)    
+
                     i = i + interval
-            elif mod_range_regex:
-                first_num = mod_range_regex.group(1)
-                last_num = mod_range_regex.group(2) + 1
+            elif re_mod_range:
+                # Add all months that match the mod in the specified range
+                i = int(re_mod_range.group(1))
+                last_num = int(re_mod_range.group(2)) + 1
+                interval = int(re_mod_range.group(3))
+
+                while i < last_num:
+                    codes.add(i)
+
+                    i = i + interval
+            elif re_alpha:
+                # Add the numerical value of the month
+                codes.add(alpha_months[int(code)])
+            elif re_alpha_range:
+                # Add all the numerical values of the month range
+                first_num = alpha_months[re_alpha_range.group(1)]
+                last_num = alpha_months[re_alpha_range.group(2)] + 1
 
                 for i in range(first_num, last_num):
                     codes.add(i)
-            elif alpha_regex:
-                # Conver the alpha month to a numerical one
-                codes.add(alpha_months[code])
-            elif alpha_range_regex:
-                first_num = alpha_months[alpha_range_regex.group(1)]
-                last_num = alpha_months[alpha_range_regex.group(2)] + 1
-
-                for i in range(first_num, last_num):
-                    codes.add(i)
-            elif num_regex:
-                # Code is numeric and be directly added
-                codes.add(int(code))
             else:
                 # No regex match found, add all months
                 for i in range(1,13):
                     codes.add(i)
         
+        log.debug("Formatted Month Codes: {}".format(codes))
+
         return list(codes)
 
     def convert_weekday_code(weekday_code):
         """Converts provided weekday code to numerical list"""
+        log.debug("Provided Weekday Code: {}".format(weekday_code))
+
         split_codes = weekday_code.split(",")
 
         # Converts any alpha codes into numbers
@@ -154,50 +175,68 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         }
 
         for c in split_codes:
-            code = code.upper().strip()
+            code = c.upper().strip()
 
-            # Match for capital letters, removing whitespace
-            mod_regex = re.match(r"^\*/(\d+)$", code)
-            mod_range_regex = re.match(r"^(\d+)\-(\d/+)/(\d+)")
-            alpha_regex = re.match(r"^[A-Z]+$", code)
-            alpha_range_regex = re.match(r"^([A-Z]+)\-([A-Z]+)", code)
-            num_regex = re.match(r"^\d+$", code)
-
-            if mod_regex:
-                # Add all matching DOW
-                i = 1
-                interval = int(mod_regex.group(1))
-
-                while i <= 6:
-                    codes.add(i)    
-                    i = i + interval
-            elif mod_range_regex:
-                first_num = mod_range_regex.group(1)
-                last_num = mod_range_regex.group(2) + 1
-
-                for i in range(first_num, last_num):
-                    codes.add(i)
-            elif alpha_regex:
-                # Conver the alpha month to a numerical one
-                codes.add(alpha_weekdays[code])
-            elif alpha_range_regex:
-                first_num = alpha_months[alpha_range_regex.group(1)]
-                last_num = alpha_months[alpha_range_regex.group(2)] + 1
-
-                for i in range(first_num, last_num):
-                    codes.add(i)
-            elif num_regex:
-                # Code is numeric and be directly added
+            # Run the regex matches
+            re_num = patterns["num"].match(code)
+            re_range = patterns["range"].match(code)
+            re_mod = patterns["mod"].match(code)
+            re_mod_range = patterns["mod_range"].match(code)
+            re_alpha = patterns["alpha"].match(code)
+            re_alpha_range = patterns["alpha_range"].match(code)
+            
+            if re_num:
+                # Code is numeric and can be directly added
                 codes.add(int(code))
+            elif re_range:
+                # Code is range of numbers that can be added
+                first_num = int(re_range.group(1))
+                last_num = int(re_range.group(2)) + 1
+                
+                for i in range(first_num, last_num):
+                    codes.add(i)
+            elif re_mod:
+                # Add all matching mod values
+                i = 0
+                interval = int(re_mod.group(1))
+
+                while i < 7:
+                    codes.add(i)
+
+                    i = i + interval
+            elif re_mod_range:
+                # Add all matching mod values in specified range
+                i = int(re_mod_range.group(1))
+                last_num = int(re_mod_range.group(2)) + 1
+                interval = int(re_mod_range.group(3))
+
+                while i < last_num:
+                    codes.add(i)
+
+                    i = i + interval
+            elif re_alpha:
+                # Add the numerical value of the DOW
+                codes.add(alpha_weekdays[code])
+            elif re_alpha_range:
+                # Add all numerical values of the DOW range
+                first_num = alpha_months[re_alpha_range.group(1)]
+                last_num = alpha_months[re_alpha_range.group(2)] + 1
+
+                for i in range(first_num, last_num):
+                    codes.add(i)
             else:
-                # No regex match found, add all months
-                for i in range(1,7):
+                # No regex match found, add all weekdays
+                for i in range(0,7):
                     codes.add(i)
         
+        log.debug("Formatted Weekday Codes: {}".format(codes))
+
         return list(codes)
 
     def convert_day_code(day_code):
         """Converts provided day code to numerical list"""
+        log.debug("Provided Day Code: {}".format(day_code))
+
         split_codes = day_code.split(",")
 
         codes = set()
@@ -205,46 +244,54 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         for c in split_codes:
             code = c.strip()
 
-            mod_regex = re.match(r"^\*/(\d+)$", code)
-            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
-            range_regex = re.match(r"^(\d+)\-(\d+)$")
-            num_regex = re.match(r"^\d+$")
-            if mod_regex:
-                # Add all dates matching the mod
-                i = 1
-                interval = int(mod_regex.group(1))
+            # Run the regex matches
+            re_num = patterns["num"].match(code)
+            re_range = patterns["range"].match(code)
+            re_mod = patterns["mod"].match(code)
+            re_mod_range = patterns["mod_range"].match(code)
 
-                while i <= 31:
-                    codes.add(i)    
-                    i = i + interval
-            elif mod_range_regex:
-                # Adds all dates matching the mod in the provided range
-                interval = mod_range_regex.group(0)
-                i = mod_range_regex.group(1)
-                end_num = mod_range_regex.group(2) + 1
+            if re_num:
+                # Code is numeric and can be directly added
+                codes.add(int(code))
+            elif re_range:
+                # Code is range of numbers that can be added
+                first_num = int(re_range.group(1))
+                last_num = int(re_range.group(2)) + 1
                 
-                while i < end_num:
+                for i in range(first_num, last_num):
                     codes.add(i)
-                    i = i + interval
-            elif range_regex:
-                # Adds all the dates in the range
-                start_num = range_regex.group(0)
-                end_num = range_regex.group(1)
+            elif re_mod:
+                # Add all matching mod values
+                i = 1
+                interval = int(re_mod.group(1))
 
-                for i in range(start_num, end_num):
+                while i < 32:
                     codes.add(i)
-            elif num_regex:
-                # Add the single number
-                codes.add(code)
+
+                    i = i + interval
+            elif re_mod_range:
+                # Add all matching mod values in specified range
+                i = int(re_mod_range.group(1))
+                last_num = int(re_mod_range.group(2)) + 1
+                interval = int(re_mod_range.group(3))
+
+                while i < last_num:
+                    codes.add(i)
+
+                    i = i + interval
             else:
-                # All all days
-                for i in range(0, 32):
+                # No regex match found, add all days
+                for i in range(1,32):
                     codes.add(i)
+
+        log.debug("Formatted Day Codes: {}".format(codes))
 
         return list(codes)
 
     def convert_hour_code(hour_code):
         """Converts provide hour code to numerical list"""
+        log.debug("Provided Hour Code: {}".format(hour_code))
+
         split_codes = hour_code.split(",")
 
         codes = set()
@@ -252,182 +299,189 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         for c in split_codes:
             code = c.strip()
 
-            mod_regex = re.match(r"^\*/(\d+)$", code)
-            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
-            range_regex = re.match(r"^(\d+)\-(\d+)$")
-            num_regex = re.match(r"^\d+$")
+            # Run the regex matches
+            re_num = patterns["num"].match(code)
+            re_range = patterns["range"].match(code)
+            re_mod = patterns["mod"].match(code)
+            re_mod_range = patterns["mod_range"].match(code)
 
-            if mod_regex:
-                # Add all hours matching the mod
-                i = 1
-                interval = int(mod_regex.group(1))
-
-                while i <= 24:
-                    codes.add(i)
-                    i = i + interval
-            elif mod_range_regex:
-                # Adds all dates matching the mod in the provided range
-                interval = mod_range_regex.group(0)
-                i = mod_range_regex.group(1)
-                end_num = mod_range_regex.group(2) + 1
+            if re_num:
+                # Code is numeric and can be directly added
+                codes.add(int(code))
+            elif re_range:
+                # Code is range of numbers that can be added
+                first_num = int(re_range.group(1))
+                last_num = int(re_range.group(2)) + 1
                 
-                while i < end_num:
+                for i in range(first_num, last_num):
                     codes.add(i)
-                    i = i + interval
-            elif range_regex:
-                # Adds all the hours in the range
-                start_num = range_regex.group(0)
-                end_num = range_regex.group(1)
+            elif re_mod:
+                # Add all matching mod values
+                i = 0
+                interval = int(re_mod.group(1))
 
-                for i in range(start_num, end_num):
+                while i < 24:
                     codes.add(i)
-            elif num_regex:
-                # Add the single number
-                codes.add(code)
+
+                    i = i + interval
+            elif re_mod_range:
+                # Add all matching mod values in specified range
+                i = int(re_mod_range.group(1))
+                last_num = int(re_mod_range.group(2)) + 1
+                interval = int(re_mod_range.group(3))
+
+                while i < last_num:
+                    codes.add(i)
+
+                    i = i + interval
             else:
-                # All all hours
-                for i in range(0, 24):
+                # No regex match found, add all hours
+                for i in range(0,24):
                     codes.add(i)
+
+        log.debug("Formatted Hour Codes: {}".format(codes))
 
         return list(codes)
 
     def convert_minute_code(minute_code):
         """Converts provided minute code to numerical list"""
-        split_codes = day_code.split(",")
+        log.debug("Provided Minute Code: {}".format(minute_code))
+
+        split_codes = minute_code.split(",")
         
         codes = set()
 
         for c in split_codes:
             code = c.strip()
 
-            mod_regex = re.match(r"^\*/(\d+)$", code)
-            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
-            range_regex = re.match(r"^(\d+)\-(\d+)$")
-            num_regex = re.match(r"^\d+$")
+            # Run the regex matches
+            re_num = patterns["num"].match(code)
+            re_range = patterns["range"].match(code)
+            re_mod = patterns["mod"].match(code)
+            re_mod_range = patterns["mod_range"].match(code)
 
-            if mod_regex:
-                # Add all hours matching the mod
-                i = 1
-                interval = int(mod_regex.group(1))
-
-                while i <= 60:
-                    codes.add(i)
-                    i = i + interval
-            elif mod_range_regex:
-                # Adds all dates matching the mod in the provided range
-                interval = mod_range_regex.group(0)
-                i = mod_range_regex.group(1)
-                end_num = mod_range_regex.group(2) + 1
+            if re_num:
+                # Code is numeric and can be directly added
+                codes.add(int(code))
+            elif re_range:
+                # Code is range of numbers that can be added
+                first_num = int(re_range.group(1))
+                last_num = int(re_range.group(2)) + 1
                 
-                while i < end_num:
+                for i in range(first_num, last_num):
                     codes.add(i)
-                    i = i + interval
-            elif range_regex:
-                # Adds all the minutes in the range
-                start_num = range_regex.group(0)
-                end_num = range_regex.group(1)
+            elif re_mod:
+                # Add all matching mod values
+                i = 0
+                interval = int(re_mod.group(1))
 
-                for i in range(start_num, end_num):
+                while i < 60:
                     codes.add(i)
-            elif num_regex:
-                # Add the single number
-                codes.add(code)
+
+                    i = i + interval
+            elif re_mod_range:
+                # Add all matching mod values in specified range
+                i = int(re_mod_range.group(1))
+                last_num = int(re_mod_range.group(2)) + 1
+                interval = int(re_mod_range.group(3))
+
+                while i < last_num:
+                    codes.add(i)
+
+                    i = i + interval
             else:
-                # All all minutes
-                for i in range(0, 60):
+                # No regex match found, add all minutes
+                for i in range(0,60):
                     codes.add(i)
+
+        log.debug("Formatted Minute Codes: {}".format(codes))
 
         return list(codes)
     
+    # Compile all the required regex patterns
+    patterns = {
+        "num": re.compile(r"^\d+$"),
+        "range": re.compile(r"^(\d+)\-(\d+)$"),
+        "mod": re.compile(r"^\*\/(\d+)$"),
+        "mod_range": re.compile(r"^(\d+)\-(\d+)\/(\d+)$"),
+        "alpha": re.compile(r"^[A-Z]{3}$"),
+        "alpha_range": re.compile(r"^([A-Z]{3})\-([A-Z]{3})$")
+    }
+
     # Properly format all the codes
-    month_codes = convert_month_code(month_code) if month_code else None
-    weekday_codes = convert_weekday_code(weekday_code) if weekday_code else None
-    day_codes = convert_day_code(day_code) if day_code else None
-    hour_codes = convert_hour_code(hour_code) if hour_code else None
-    minute_codes = convert_minute_code(minute_code) if minute_code else None
+    month_codes = convert_month_code(month_code)
+    weekday_codes = convert_weekday_code(weekday_code)
+    day_codes = convert_day_code(day_code)
+    hour_codes = convert_hour_code(hour_code)
+    minute_codes = convert_minute_code(minute_code)
     
     now = datetime.now(timezone.utc)
+
+    # Reset the seconds of the time
+    now = now.replace(second=0, microsecond=0)
     
-    if month_codes:
-        # Check if there is also a day to match or not
-        if weekday_code or day_codes:
-            # Iterate through days
-            next_month
-            next_day
+    # Iterate through days until match is found (month, weekday, day)
+    for d in range(1, 4020):
+        test_day = now + timedelta(days=d)
+
+        # Test for matching month
+        if test_day.month in month_codes:
+            month_match = True
         else:
-            # Just find matching month
-            current_month = now.month()
+            month_match = False
 
-            for m in range(1,13):
-                test_month = current_month + m
-
-                if test_month in month_codes:
-                    break
-            
-            next_month = m
-            next_day = 0
-    elif weekday_codes or day_codes:
-        # No month code to find, just iterate through days
-        current_day = now.day()
-
-        # Cycle through the next ~11 years to find a match
-        for d in range(0, 4020):
-            test_day = current_day + timedelta(day=d)
-
+        # Test for matching weekday
+        if test_day.weekday() in weekday_codes:
+            weekday_match = True
+        else:
             weekday_match = False
+
+        # Test for matching day
+        if test_day.day in day_codes:
+            day_match = True
+        else:
             day_match = False
+        
+        if month_match and weekday_match and day_match:
+            # All criteria matched, end loop
+            break
 
-            if weekday_codes:
-                if test_day.weekday() in weekday_codes:
-                    weekday_match = True
-            else:
-                weekday_match = True
+    # Record the day on which the loop ended
+    next_day = d
+
+    # If we need to advance day, start the current time from 00:00
+    if next_day > 0:
+        now = now.replace(hour=0, minute=0)
+
+    # Iterate through 24 hours to find hour match
+    for h in range(0,24):
+        test_hour = (now + timedelta(hours=h)).hour
             
-            if day_codes:
-                # TODO: Add functionality for day in day_codes 
-                # exceeding the number of days in the month
-                if test_day.day() in day_codes:
-                    day_match = True
-            else:
-                day_match = True
+        if test_hour in hour_codes:
+            # Match found, end loop
+            break
 
-            if weekday_match and day_match:
-                break
-
-        next_month = 0
-        next_day = d
-    else:
-        # Any day and month matches
-        next_month = 0
-        next_day = 0
-
-    if hour_codes:
-        current_hour = now.hour()
-
-        for h in range(0,24):
-            test_hour = current_hour + h
+    # Record the hour which ended the loop
+    next_hour = h
+    
+    # Iterate through 60 minutes to find minute match
+    for m in range(0,60):
+        test_minute = (now + timedelta(minutes=m)).minute
             
-            if test_hour in hour_codes:
-                break
+        if test_minute in minute_codes:
+            # Match found, end loop
+            break
 
-        next_hour = h
-    else:
-        next_hour = 0
+    # Record the minute which ended the loop
+    next_minute = m
 
-    if minute_codes:
-        current_minute = now.minute()
+    # Add all the recorded values to determine when the next job should run
+    next_datetime = now + timedelta(days=next_day, hours=next_hour, minutes=next_minute)
 
-        for m in range(0,60):
-            test_minute = current_minute + m
+    log.debug("Current time = {}".format(now))
+    log.debug("Next review due = {}".format(next_datetime))
 
-            if test_minute in minute_codes:
-                break
-
-        next_minute = m
-    else:
-        next_minute = 1
-
-    next_datetime = now + timedelta()
+    return next_datetime
 
 
 # Setup the root path
@@ -572,15 +626,15 @@ for app in app_list:
         new_entry.save()
 
     # Update the app last_reviewed_log date and next review date
-    if log_entries:
-        log.debug("Updating the review and next review dates")
-        app.last_reviewed_log = log_entries[-1]["asctime"]
-        app.next_review_date = determine_next_date(
-            app.review_minute,
-            app.review_hour,
-            app.review_day,
-            app.review_month,
-            app.review_weekday
-        )
+    #if log_entries:
+    log.debug("Updating the review and next review dates")
+    # app.last_reviewed_log = log_entries[-1]["asctime"]
+    app.next_review_date = determine_next_date(
+        app.review_minute,
+        app.review_hour,
+        app.review_day,
+        app.review_month,
+        app.review_weekday
+    )
 
-        app.save()
+    # app.save()
