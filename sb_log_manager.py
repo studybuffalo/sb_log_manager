@@ -77,7 +77,7 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         split_codes = month_code.split(",")
 
         # Convert any */# codes or ABC codes into specific months
-        codes = []
+        codes = set()
 
         alpha_months = {
                     "JAN": 1,
@@ -94,31 +94,54 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
                     "DEC": 12
                 }
 
-        for code in split_codes:
+        for c in split_codes:
+            c = codes.upper().strip()
+
             mod_regex = re.match(r"^\*/(\d+)$", code)
-            alpha_regex = re.match(r"^[A-Z]+$", code.upper().strip())
+            mod_range_regex = re.match(r"^(\d+)\-(\d/+)/(\d+)")
+            alpha_regex = re.match(r"^[A-Z]+$", code)
+            alpha_range_regex = re.match(r"^([A-Z]+)\-([A-Z]+)", code)
+            num_regex = re.match(r"^\d+$", code)
 
             if mod_regex:
+                # Add all months that match the mod function
                 i = 1
                 interval = int(mod_regex.group(1))
 
                 while i <= 12:
-                    codes.append(i)    
+                    codes.add(i)    
                     i = i + interval
+            elif mod_range_regex:
+                first_num = mod_range_regex.group(1)
+                last_num = mod_range_regex.group(2) + 1
 
+                for i in range(first_num, last_num):
+                    codes.add(i)
             elif alpha_regex:
-                codes.append(alpha_months[code.upper().trim()])
-            else:
-                codes.append(int(code))
+                # Conver the alpha month to a numerical one
+                codes.add(alpha_months[code])
+            elif alpha_range_regex:
+                first_num = alpha_months[alpha_range_regex.group(1)]
+                last_num = alpha_months[alpha_range_regex.group(2)] + 1
 
-        return codes
+                for i in range(first_num, last_num):
+                    codes.add(i)
+            elif num_regex:
+                # Code is numeric and be directly added
+                codes.add(int(code))
+            else:
+                # No regex match found, add all months
+                for i in range(1,13):
+                    codes.add(i)
+        
+        return list(codes)
 
     def convert_weekday_code(weekday_code):
         """Converts provided weekday code to numerical list"""
         split_codes = weekday_code.split(",")
 
         # Converts any alpha codes into numbers
-        codes = []
+        codes = set()
 
         alpha_weekdays = {
             "SUN": 0,
@@ -130,83 +153,191 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
             "SAT": 6
         }
 
-        for code in split_codes:
-            # Match for capital letters, removing whitespace
-            alpha_regex = re.match(r"^[A-Z]+$", code.upper().trim())
+        for c in split_codes:
+            code = code.upper().strip()
 
-            if alpha_regex:
-                codes.append(alpha_weekdays[code.upper().trim()])
+            # Match for capital letters, removing whitespace
+            mod_regex = re.match(r"^\*/(\d+)$", code)
+            mod_range_regex = re.match(r"^(\d+)\-(\d/+)/(\d+)")
+            alpha_regex = re.match(r"^[A-Z]+$", code)
+            alpha_range_regex = re.match(r"^([A-Z]+)\-([A-Z]+)", code)
+            num_regex = re.match(r"^\d+$", code)
+
+            if mod_regex:
+                # Add all matching DOW
+                i = 1
+                interval = int(mod_regex.group(1))
+
+                while i <= 6:
+                    codes.add(i)    
+                    i = i + interval
+            elif mod_range_regex:
+                first_num = mod_range_regex.group(1)
+                last_num = mod_range_regex.group(2) + 1
+
+                for i in range(first_num, last_num):
+                    codes.add(i)
+            elif alpha_regex:
+                # Conver the alpha month to a numerical one
+                codes.add(alpha_weekdays[code])
+            elif alpha_range_regex:
+                first_num = alpha_months[alpha_range_regex.group(1)]
+                last_num = alpha_months[alpha_range_regex.group(2)] + 1
+
+                for i in range(first_num, last_num):
+                    codes.add(i)
+            elif num_regex:
+                # Code is numeric and be directly added
+                codes.add(int(code))
             else:
-                codes.append(int(code))
+                # No regex match found, add all months
+                for i in range(1,7):
+                    codes.add(i)
+        
+        return list(codes)
 
     def convert_day_code(day_code):
         """Converts provided day code to numerical list"""
         split_codes = day_code.split(",")
 
-        codes = []
+        codes = set()
 
-        for code in split_codes:
+        for c in split_codes:
+            code = c.strip()
+
             mod_regex = re.match(r"^\*/(\d+)$", code)
-
+            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
+            range_regex = re.match(r"^(\d+)\-(\d+)$")
+            num_regex = re.match(r"^\d+$")
             if mod_regex:
+                # Add all dates matching the mod
                 i = 1
                 interval = int(mod_regex.group(1))
 
                 while i <= 31:
-                    codes.append(i)    
+                    codes.add(i)    
                     i = i + interval
-            else:
-                coes.append(int(code))
+            elif mod_range_regex:
+                # Adds all dates matching the mod in the provided range
+                interval = mod_range_regex.group(0)
+                i = mod_range_regex.group(1)
+                end_num = mod_range_regex.group(2) + 1
+                
+                while i < end_num:
+                    codes.add(i)
+                    i = i + interval
+            elif range_regex:
+                # Adds all the dates in the range
+                start_num = range_regex.group(0)
+                end_num = range_regex.group(1)
 
-        return codes
+                for i in range(start_num, end_num):
+                    codes.add(i)
+            elif num_regex:
+                # Add the single number
+                codes.add(code)
+            else:
+                # All all days
+                for i in range(0, 32):
+                    codes.add(i)
+
+        return list(codes)
 
     def convert_hour_code(hour_code):
         """Converts provide hour code to numerical list"""
         split_codes = hour_code.split(",")
 
-        codes = []
+        codes = set()
 
-        for code in split_codes:
+        for c in split_codes:
+            code = c.strip()
+
             mod_regex = re.match(r"^\*/(\d+)$", code)
+            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
+            range_regex = re.match(r"^(\d+)\-(\d+)$")
+            num_regex = re.match(r"^\d+$")
 
             if mod_regex:
-                i = 0
+                # Add all hours matching the mod
+                i = 1
                 interval = int(mod_regex.group(1))
 
-                while i <= 23:
-                    codes.append(i)    
+                while i <= 24:
+                    codes.add(i)
                     i = i + interval
-            else:
-                coes.append(int(code))
+            elif mod_range_regex:
+                # Adds all dates matching the mod in the provided range
+                interval = mod_range_regex.group(0)
+                i = mod_range_regex.group(1)
+                end_num = mod_range_regex.group(2) + 1
+                
+                while i < end_num:
+                    codes.add(i)
+                    i = i + interval
+            elif range_regex:
+                # Adds all the hours in the range
+                start_num = range_regex.group(0)
+                end_num = range_regex.group(1)
 
-        return codes
+                for i in range(start_num, end_num):
+                    codes.add(i)
+            elif num_regex:
+                # Add the single number
+                codes.add(code)
+            else:
+                # All all hours
+                for i in range(0, 24):
+                    codes.add(i)
+
+        return list(codes)
 
     def convert_minute_code(minute_code):
         """Converts provided minute code to numerical list"""
         split_codes = day_code.split(",")
+        
+        codes = set()
 
-        codes = []
+        for c in split_codes:
+            code = c.strip()
 
-        for code in split_codes:
             mod_regex = re.match(r"^\*/(\d+)$", code)
+            mod_range_regex = re.match(r"^(\d+)\-(\d+)/(\d+)")
+            range_regex = re.match(r"^(\d+)\-(\d+)$")
+            num_regex = re.match(r"^\d+$")
 
             if mod_regex:
-                i = 0
+                # Add all hours matching the mod
+                i = 1
                 interval = int(mod_regex.group(1))
 
-                while i <= 59:
-                    codes.append(i)    
+                while i <= 60:
+                    codes.add(i)
                     i = i + interval
-            else:
-                coes.append(int(code))
+            elif mod_range_regex:
+                # Adds all dates matching the mod in the provided range
+                interval = mod_range_regex.group(0)
+                i = mod_range_regex.group(1)
+                end_num = mod_range_regex.group(2) + 1
+                
+                while i < end_num:
+                    codes.add(i)
+                    i = i + interval
+            elif range_regex:
+                # Adds all the minutes in the range
+                start_num = range_regex.group(0)
+                end_num = range_regex.group(1)
 
-        return codes
-    
-        month_codes = convert_month_code(month_code)
-        weekday_codes = convert_weekday_code(weekday_code)
-        day_codes = convert_day_code(day_code)
-        hour_codes = convert_hour_code(hour_code)
-        minute_codes = convert_minute_code(minute_code)
+                for i in range(start_num, end_num):
+                    codes.add(i)
+            elif num_regex:
+                # Add the single number
+                codes.add(code)
+            else:
+                # All all minutes
+                for i in range(0, 60):
+                    codes.add(i)
+
+        return list(codes)
     
     # Properly format all the codes
     month_codes = convert_month_code(month_code) if month_code else None
@@ -295,7 +426,6 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
         next_minute = m
     else:
         next_minute = 1
-
 
     next_datetime = now + timedelta()
 
