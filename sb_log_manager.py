@@ -4,7 +4,6 @@
 import configparser
 from datetime import datetime, timedelta, timezone
 from django.core.wsgi import get_wsgi_application
-from django.utils import timezone
 import json
 import logging
 import logging.config
@@ -12,6 +11,63 @@ import os
 import re
 import sys
 from unipath import Path, FILES
+
+def process_line(line):
+    # Remove the newline characters at the end of the string
+    line = line.rstrip("\r\n")
+
+    # Set up regex patterns
+    re_section = r"###.*?###"
+    re_backslash = r"(?<=[^\\])(\\)(?=[^\\])"
+
+    # Cycle through and find all the sections
+    line_sections = []
+    last_section_end = 0
+
+    for section in re.finditer(re_section, line):
+        # Get the section to workon
+        section_start = section.span()[0]
+        section_end = section.span()[1]
+        section_stub = line[section_start:section_end]
+
+        # Add all preceding text to the new line section array
+        line_sections.append(line[last_section_end:section_start])
+        last_section_end = section_end
+
+        # Escape any single backslashes
+        new_stub = []
+        last_match_end = 0
+
+        if re.search(re_backslash, section_stub):
+            for match in re.finditer(re_backslash, section_stub):
+                match_start = match.span()[0]
+                match_end = match.span()[1]
+                match_stub = section_stub[match_start:match_end]
+
+                # Add all preceding text to the new stub array
+                new_stub.append(section_stub[last_match_end:match_start])
+                last_match_end = match_end
+
+                # Escape all single backslashes
+                new_stub.append(match_stub.replace("\\", "\\\\"))
+            
+            # Add the remaining sub to the new_stub
+            new_stub.append(section_stub[last_match_end:])
+            
+            # Reassemble the stub for the next replacement
+            section_stub = "".join(new_stub)
+
+        # Remove the section markers
+        section_stub = section_stub.replace("###", '"')
+
+        # Add the modified stub to the lines_sections
+        line_sections.append(section_stub)
+
+    # Add the remaining section back to the line
+    line_sections.append(line[last_section_end:])
+
+    # Assemble the line sections into the final string
+    return "".join(line_sections)
 
 def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_code):
     """Determines next update date based on the provided criteria"""
@@ -244,63 +300,6 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
     next_datetime = now + timedelta()
 
 
-def process_line(line):
-    # Remove the newline characters at the end of the string
-    line = line.rstrip("\r\n")
-
-    # Set up regex patterns
-    re_section = r"###.*?###"
-    re_backslash = r"(?<=[^\\])(\\)(?=[^\\])"
-
-    # Cycle through and find all the sections
-    line_sections = []
-    last_section_end = 0
-
-    for section in re.finditer(re_section, line):
-        # Get the section to workon
-        section_start = section.span()[0]
-        section_end = section.span()[1]
-        section_stub = line[section_start:section_end]
-
-        # Add all preceding text to the new line section array
-        line_sections.append(line[last_section_end:section_start])
-        last_section_end = section_end
-
-        # Escape any single backslashes
-        new_stub = []
-        last_match_end = 0
-
-        if re.search(re_backslash, section_stub):
-            for match in re.finditer(re_backslash, section_stub):
-                match_start = match.span()[0]
-                match_end = match.span()[1]
-                match_stub = section_stub[match_start:match_end]
-
-                # Add all preceding text to the new stub array
-                new_stub.append(section_stub[last_match_end:match_start])
-                last_match_end = match_end
-
-                # Escape all single backslashes
-                new_stub.append(match_stub.replace("\\", "\\\\"))
-            
-            # Add the remaining sub to the new_stub
-            new_stub.append(section_stub[last_match_end:])
-            
-            # Reassemble the stub for the next replacement
-            section_stub = "".join(new_stub)
-
-        # Remove the section markers
-        section_stub = section_stub.replace("###", '"')
-
-        # Add the modified stub to the lines_sections
-        line_sections.append(section_stub)
-
-    # Add the remaining section back to the line
-    line_sections.append(line[last_section_end:])
-
-    # Assemble the line sections into the final string
-    return "".join(line_sections)
-
 # Setup the root path
 root = Path(sys.argv[1])
 
@@ -325,7 +324,7 @@ from log_manager.models import AppData, LogEntry
 
 # Retrieve a list of the applications to monitor
 log.info("Retrieving application list with reviews due")
-now = timezone.now()
+now = datetime.now(timezone.utc)
 app_list = AppData.objects.filter(next_review__lte=now)
 
 # Retrieve each applicable application log
@@ -371,54 +370,54 @@ for app in app_list:
 
     # Filter the application log based on last screened log datetime
     log.debug("Filtering log entries to only include the most recent")
-    log = []
+    log_entries = []
     import pytz
 
     for entry in unfiltered_log:
         log_date = datetime.strptime(entry["asctime"], "%Y-%m-%d %H:%M:%S.%f")
 
-        if compare_date > app.last_reviewed_log:
-            log.append(entry)
+        if log_date > app.last_reviewed_log:
+            log_entries.append(entry)
 
     # Check if this app is being monitored for proper stop and starts
     if app.flag_start:
-        if any(app.flag_start in entry.message for entry in log):
+        if any(app.flag_start in entry["message"] for entry in log_entries):
             log.info("App {} has started properly".format(app.name))
         else:
             log.info("App {} did not start properly".format(app.name))
 
     if app.flag_end:
-        if any(app.flag_end in entry.message for entry in log):
+        if any(app.flag_end in entry["message"] for entry in log_entries):
             log.info("App {} completed properly".format(app.name))
         else:
             log.info("App {} did complete properly".format(app.name))
 
     # Process the JSON log and import into the django database
-    for entry in log:
+    for entry in log_entries:
         # Extract all the json values
-        asc_time = entry["asctime"] if entry["asctime"] else None
-        created = entry["created"] if entry["created"] else None
-        exc_info = entry["exc_info"] if entry["exc_info"] else None
-        file_name = entry["filename"] if entry["filename"] else None
-        func_name = entry["funcName"] if entry["funcName"] else None
-        level_name = entry["levelname"] if entry["levelname"] else None
-        level_no = entry["levelno"] if entry["levelno"] else None
-        line_no = entry["lineno"] if entry["lineno"] else None
-        message = entry["message"] if entry["message"] else None
-        module = entry["module"] if entry["module"] else None
-        msecs = entry["msecs"] if entry["msecs"] else None
-        name = entry["name"] if entry["name"] else None
-        path_name = entry["pathname"] if entry["pathname"] else None
-        process = entry["process"] if entry["process"] else None
-        process_name = entry["processName"] if entry["processName"] else None
-        relative_created = entry["relativeCreated"] if entry["relativeCreated"] else None
-        stack_info = entry["stack_info"] if entry["stack_info"] else None
-        thread = entry["thread"] if entry["thread"] else None
-        thread_name = entry["threadName"] if entry["threadName"] else None
+        asc_time = entry["asctime"] if "asctime" in entry else None
+        created = entry["created"] if "created" in entry else None
+        exc_info = entry["exc_info"] if "exc_info" in entry else None
+        file_name = entry["filename"] if "filename" in entry else None
+        func_name = entry["funcName"] if "funcName" in entry else None
+        level_name = entry["levelname"] if "levelname" in entry else None
+        level_no = entry["levelno"] if "levelno" in entry else None
+        line_no = entry["lineno"] if "lineno" in entry else None
+        message = entry["message"] if "message" in entry else None
+        module = entry["module"] if "module" in entry else None
+        msecs = entry["msecs"] if "msecs" in entry else None
+        name = entry["name"] if "name" in entry else None
+        path_name = entry["pathname"] if "pathname" in entry else None
+        process = entry["process"] if "process" in entry else None
+        process_name = entry["processName"] if "processName" in entry else None
+        relative_created = entry["relativeCreated"] if "relativeCreated" in entry else None
+        stack_info = entry["stack_info"] if "stack_info" in entry else None
+        thread = entry["thread"] if "thread" in entry else None
+        thread_name = entry["threadName"] if "threadName" in entry else None
 
         # Create a new entry for the LogEntry module
         new_entry = LogEntry(
-            app_name=app.id,
+            app_name=app,
             asc_time=asc_time,
             created=created,
             exc_info=exc_info,
@@ -443,13 +442,15 @@ for app in app_list:
         new_entry.save()
 
     # Update the app last_reviewed_log date and next review date
-    app.last_reviewed_log = log[-1]["asc_time"]
-    app.next_review_date = determine_next_date(
-        app.review_minute,
-        app.review_hour,
-        app.review_day,
-        app.review_month,
-        app.review_weekday
-    )
+    if log_entries:
+        log.debug("Updating the review and next review dates")
+        app.last_reviewed_log = log_entries[-1]["asctime"]
+        app.next_review_date = determine_next_date(
+            app.review_minute,
+            app.review_hour,
+            app.review_day,
+            app.review_month,
+            app.review_weekday
+        )
 
-    app.update()
+        app.save()
