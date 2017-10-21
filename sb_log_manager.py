@@ -565,10 +565,14 @@ for app in app_list:
     for app_log in app_logs:
         log.debug("Opening log file: {}".format(app_log))
 
-        with open(app_log, "r") as file:
-            for line in file:
-                log_lines.append(process_line(line))
+        try:
+            with open(app_log, "r") as file:
+                for line in file:
+                    log_lines.append(process_line(line))
+        except Exception as e:
+            log.warn("Unable to open and/or read file")
 
+    # Convert text to a JSON format
     log_text = "[{}]".format(",".join(log_lines))
     
     try:
@@ -636,7 +640,10 @@ for app in app_list:
             thread_name=thread_name,
         )
         
-        new_entry.save()
+        try:
+            new_entry.save()
+        except Exception as e:
+            log.warn("Unable to save log entry")
 
     # Update the app last_reviewed_log date and next review date
     if json_log:
@@ -650,11 +657,17 @@ for app in app_list:
             app.review_weekday
         )
 
-        app.save()
+        try:
+            app.save()
+        except Exception as e:
+            log.warn("Unable to update AppData object")
 
     # Clear the log file contents now that they have been saved in the database
     for app_log in app_logs:
         log.debug("Clearing log file: {}".format(app_log))
 
-        with open(app_log, "w") as file:
-            file.truncate()
+        try:
+            with open(app_log, "w") as file:
+                file.truncate()
+        except Exception as e:
+            log.warn("Unable to clear log file")
