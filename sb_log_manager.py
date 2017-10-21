@@ -96,7 +96,7 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
 
         for code in split_codes:
             mod_regex = re.match(r"^\*/(\d+)$", code)
-            alpha_regex = re.match(r"^[A-Z]+$", code.upper().trim())
+            alpha_regex = re.match(r"^[A-Z]+$", code.upper().strip())
 
             if mod_regex:
                 i = 1
@@ -215,7 +215,7 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
     hour_codes = convert_hour_code(hour_code) if hour_code else None
     minute_codes = convert_minute_code(minute_code) if minute_code else None
     
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     
     if month_codes:
         # Check if there is also a day to match or not
