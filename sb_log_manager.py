@@ -2,9 +2,12 @@
 
 """
 import configparser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from django.core.wsgi import get_wsgi_application
+from django.utils import timezone
 import json
+import logging
+import logging.config
 import os
 import re
 import sys
@@ -240,6 +243,64 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
 
     next_datetime = now + timedelta()
 
+
+def process_line(line):
+    # Remove the newline characters at the end of the string
+    line = line.rstrip("\r\n")
+
+    # Set up regex patterns
+    re_section = r"###.*?###"
+    re_backslash = r"(?<=[^\\])(\\)(?=[^\\])"
+
+    # Cycle through and find all the sections
+    line_sections = []
+    last_section_end = 0
+
+    for section in re.finditer(re_section, line):
+        # Get the section to workon
+        section_start = section.span()[0]
+        section_end = section.span()[1]
+        section_stub = line[section_start:section_end]
+
+        # Add all preceding text to the new line section array
+        line_sections.append(line[last_section_end:section_start])
+        last_section_end = section_end
+
+        # Escape any single backslashes
+        new_stub = []
+        last_match_end = 0
+
+        if re.search(re_backslash, section_stub):
+            for match in re.finditer(re_backslash, section_stub):
+                match_start = match.span()[0]
+                match_end = match.span()[1]
+                match_stub = section_stub[match_start:match_end]
+
+                # Add all preceding text to the new stub array
+                new_stub.append(section_stub[last_match_end:match_start])
+                last_match_end = match_end
+
+                # Escape all single backslashes
+                new_stub.append(match_stub.replace("\\", "\\\\"))
+            
+            # Add the remaining sub to the new_stub
+            new_stub.append(section_stub[last_match_end:])
+            
+            # Reassemble the stub for the next replacement
+            section_stub = "".join(new_stub)
+
+        # Remove the section markers
+        section_stub = section_stub.replace("###", '"')
+
+        # Add the modified stub to the lines_sections
+        line_sections.append(section_stub)
+
+    # Add the remaining section back to the line
+    line_sections.append(line[last_section_end:])
+
+    # Assemble the line sections into the final string
+    return "".join(line_sections)
+
 # Setup the root path
 root = Path(sys.argv[1])
 
@@ -263,41 +324,60 @@ application = get_wsgi_application()
 from log_manager.models import AppData, LogEntry
 
 # Retrieve a list of the applications to monitor
-now = datetime.now()
-app_list = AppData.objects.filter(next_update__lte=now)
-
+log.info("Retrieving application list with reviews due")
+now = timezone.now()
+app_list = AppData.objects.filter(next_review__lte=now)
 
 # Retrieve each applicable application log
 for app in app_list:
+    log.info("Retrieving log data for {}".format(app.name))
+
     # Set up the directory containing all the logs
     log_directory = Path(app.log_location)
-    
+
+    log.debug("Log Location = {}".format(log_directory))
+
     # Cycle through all retrieved files looking for files 
     # matching the file name regex
+    log.debug("File name regex = {}".format(app.file_name))
+
     name_regex = r"{}".format(app.file_name)
     app_logs = []
 
-    for file in log_directory.listdir(filter=FILES):
+    for file in log_directory.listdir(names_only=True):
+        log.debug("File name in log directory = {}".format(file))
+
         if re.match(name_regex, file):
+            log.debug("Regex matches file name")
+
             app_logs.append(log_directory.child(file))
-    
+
     # Open the log(s) and form them into a single json file
     log_lines = []
 
-    for log in app_logs:
-        with open(log, "r") as file:
+    for app_log in app_logs:
+        log.debug("Opening log file: {}".format(app_log))
+
+        with open(app_log, "r") as file:
             for line in file:
-                log_lines.append(line)
+                log_lines.append(process_line(line))
 
     log_text = "[{}]".format(",".join(log_lines))
-
-    unfiltered_log= json.loads(log_text)
+    
+    try:
+        unfiltered_log= json.loads(log_text)
+    except Exception as e:
+        log.warn("Unable to load json log: {}".format(e))
 
     # Filter the application log based on last screened log datetime
+    log.debug("Filtering log entries to only include the most recent")
     log = []
-    
+    import pytz
+
     for entry in unfiltered_log:
-        if entry["asc_time"] > app.last_reviewed_log:
+        log_date = datetime.strptime(entry["asctime"], "%Y-%m-%d %H:%M:%S.%f")
+
+        if compare_date > app.last_reviewed_log:
             log.append(entry)
 
     # Check if this app is being monitored for proper stop and starts
