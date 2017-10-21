@@ -11,6 +11,7 @@ import os
 import re
 import sys
 from unipath import Path, FILES
+from dateutil import parser
 
 def process_line(line):
     # Remove the newline characters at the end of the string
@@ -594,6 +595,8 @@ for app in app_list:
             log.info("App {} did complete properly".format(app.name))
 
     # Process the JSON log and import into the django database
+    log.info("Uploading log entries")
+
     for entry in json_log:
         # Extract all the json values
         asc_time = entry["asctime"] if "asctime" in entry else None
@@ -615,11 +618,11 @@ for app in app_list:
         stack_info = entry["stack_info"] if "stack_info" in entry else None
         thread = entry["thread"] if "thread" in entry else None
         thread_name = entry["threadName"] if "threadName" in entry else None
-
+        
         # Create a new entry for the LogEntry module
         new_entry = LogEntry(
             app_name=app,
-            asc_time=asc_time,
+            asc_time=parser.parse(asc_time),
             created=created,
             exc_info=exc_info,
             file_name=file_name,
@@ -649,7 +652,7 @@ for app in app_list:
     if json_log:
         log.debug("Updating the review and next review dates")
         app.last_reviewed_log = json_log[-1]["asctime"]
-        app.next_review_date = determine_next_date(
+        app.next_review = determine_next_date(
             app.review_minute,
             app.review_hour,
             app.review_day,
