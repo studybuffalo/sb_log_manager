@@ -19,6 +19,7 @@ def process_line(line):
     # Set up regex patterns
     re_section = r"###.*?###"
     re_backslash = r"(?<=[^\\])(\\)(?=[^\\])"
+    re_quotes = r"(?<=[^\\])\""
 
     # Cycle through and find all the sections
     line_sections = []
@@ -52,6 +53,29 @@ def process_line(line):
                 new_stub.append(match_stub.replace("\\", "\\\\"))
             
             # Add the remaining sub to the new_stub
+            new_stub.append(section_stub[last_match_end:])
+            
+            # Reassemble the stub for the next replacement
+            section_stub = "".join(new_stub)
+
+        # Escape any single backslashes
+        new_stub = []
+        last_match_end = 0
+
+        if re.search(re_quotes, section_stub):
+            for match in re.finditer(re_quotes, section_stub):
+                match_start = match.span()[0]
+                match_end = match.span()[1]
+                match_stub = section_stub[match_start:match_end]
+
+                # Add all preceding text to the new stub array
+                new_stub.append(section_stub[last_match_end:match_start])
+                last_match_end = match_end
+
+                # Escape all unescaped quotations marks
+                new_stub.append(match_stub.replace("\"", "\\\""))
+
+             # Add the remaining sub to the new_stub
             new_stub.append(section_stub[last_match_end:])
             
             # Reassemble the stub for the next replacement
