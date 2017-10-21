@@ -572,36 +572,25 @@ for app in app_list:
     log_text = "[{}]".format(",".join(log_lines))
     
     try:
-        unfiltered_log= json.loads(log_text)
+        json_log= json.loads(log_text)
     except Exception as e:
         log.warn("Unable to load json log: {}".format(e))
 
-    # Filter the application log based on last screened log datetime
-    log.debug("Filtering log entries to only include the most recent")
-    log_entries = []
-    import pytz
-
-    for entry in unfiltered_log:
-        log_date = datetime.strptime(entry["asctime"], "%Y-%m-%d %H:%M:%S.%f")
-
-        if log_date > app.last_reviewed_log:
-            log_entries.append(entry)
-
     # Check if this app is being monitored for proper stop and starts
     if app.flag_start:
-        if any(app.flag_start in entry["message"] for entry in log_entries):
+        if any(app.flag_start in entry["message"] for entry in json_log):
             log.info("App {} has started properly".format(app.name))
         else:
             log.info("App {} did not start properly".format(app.name))
 
     if app.flag_end:
-        if any(app.flag_end in entry["message"] for entry in log_entries):
+        if any(app.flag_end in entry["message"] for entry in json_log):
             log.info("App {} completed properly".format(app.name))
         else:
             log.info("App {} did complete properly".format(app.name))
 
     # Process the JSON log and import into the django database
-    for entry in log_entries:
+    for entry in json_log:
         # Extract all the json values
         asc_time = entry["asctime"] if "asctime" in entry else None
         created = entry["created"] if "created" in entry else None
@@ -650,15 +639,22 @@ for app in app_list:
         new_entry.save()
 
     # Update the app last_reviewed_log date and next review date
-    #if log_entries:
-    log.debug("Updating the review and next review dates")
-    # app.last_reviewed_log = log_entries[-1]["asctime"]
-    app.next_review_date = determine_next_date(
-        app.review_minute,
-        app.review_hour,
-        app.review_day,
-        app.review_month,
-        app.review_weekday
-    )
+    if json_log:
+        log.debug("Updating the review and next review dates")
+        app.last_reviewed_log = json_log[-1]["asctime"]
+        app.next_review_date = determine_next_date(
+            app.review_minute,
+            app.review_hour,
+            app.review_day,
+            app.review_month,
+            app.review_weekday
+        )
 
-    # app.save()
+        app.save()
+
+    # Clear the log file contents now that they have been saved in the database
+    for app_log in app_logs:
+        log.debug("Clearing log file: {}".format(app_log))
+
+        with open(app_log, "w") as file:
+            file.truncate()
