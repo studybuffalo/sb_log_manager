@@ -2,97 +2,17 @@
 
 """
 import configparser
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from django.core.wsgi import get_wsgi_application
 import json
 import logging
 import logging.config
 import os
+import pytz
 import re
 import sys
 from unipath import Path, FILES
 from dateutil import parser
-
-def process_line(line):
-    # Remove the newline characters at the end of the string
-    line = line.rstrip("\r\n")
-
-    # Set up regex patterns
-    re_section = r"###.*?###"
-    re_backslash = r"(?<=[^\\])(\\)(?=[^\\])"
-    re_quotes = r"(?<=[^\\])\""
-
-    # Cycle through and find all the sections
-    line_sections = []
-    last_section_end = 0
-
-    for section in re.finditer(re_section, line):
-        # Get the section to workon
-        section_start = section.span()[0]
-        section_end = section.span()[1]
-        section_stub = line[section_start:section_end]
-
-        # Add all preceding text to the new line section array
-        line_sections.append(line[last_section_end:section_start])
-        last_section_end = section_end
-
-        # Escape any single backslashes
-        new_stub = []
-        last_match_end = 0
-
-        if re.search(re_backslash, section_stub):
-            for match in re.finditer(re_backslash, section_stub):
-                match_start = match.span()[0]
-                match_end = match.span()[1]
-                match_stub = section_stub[match_start:match_end]
-
-                # Add all preceding text to the new stub array
-                new_stub.append(section_stub[last_match_end:match_start])
-                last_match_end = match_end
-
-                # Escape all single backslashes
-                new_stub.append(match_stub.replace("\\", "\\\\"))
-            
-            # Add the remaining sub to the new_stub
-            new_stub.append(section_stub[last_match_end:])
-            
-            # Reassemble the stub for the next replacement
-            section_stub = "".join(new_stub)
-
-        # Escape any single backslashes
-        new_stub = []
-        last_match_end = 0
-
-        if re.search(re_quotes, section_stub):
-            for match in re.finditer(re_quotes, section_stub):
-                match_start = match.span()[0]
-                match_end = match.span()[1]
-                match_stub = section_stub[match_start:match_end]
-
-                # Add all preceding text to the new stub array
-                new_stub.append(section_stub[last_match_end:match_start])
-                last_match_end = match_end
-
-                # Escape all unescaped quotations marks
-                new_stub.append(match_stub.replace("\"", "\\\""))
-
-             # Add the remaining sub to the new_stub
-            new_stub.append(section_stub[last_match_end:])
-            
-            # Reassemble the stub for the next replacement
-            section_stub = "".join(new_stub)
-
-        # Remove the section markers
-        section_stub = section_stub.replace("###", '"')
-
-        # Add the modified stub to the lines_sections
-        line_sections.append(section_stub)
-
-    # Add the remaining section back to the line
-    line_sections.append(line[last_section_end:])
-
-    # Assemble the line sections into the final string
-    return "".join(line_sections)
 
 def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_code):
     """Determines next update date based on the provided criteria"""
@@ -440,7 +360,8 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
     hour_codes = convert_hour_code(hour_code)
     minute_codes = convert_minute_code(minute_code)
     
-    now = datetime.now(timezone.utc)
+    utc = pytz.timezone("UTC")
+    now = datetime.now(utc)
 
     # Reset the seconds of the time
     now = now.replace(second=0, microsecond=0)
@@ -508,7 +429,6 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
 
     return next_datetime
 
-
 # Setup the root path
 root = Path(sys.argv[1])
 
@@ -533,7 +453,7 @@ from log_manager.models import AppData, LogEntry
 
 # Retrieve a list of the applications to monitor
 log.info("Retrieving application list with reviews due")
-now = datetime.now(timezone.utc)
+now = datetime.now(pytz.timezone("UTC"))
 app_list = AppData.objects.filter(next_review__lte=now)
 
 # Retrieve each applicable application log
@@ -562,25 +482,32 @@ for app in app_list:
 
     # Open the log(s) and form them into a single json file
     log_lines = []
+    json_log = []
 
+    # Cycle through all the log files and create a list of the entries
     for app_log in app_logs:
         log.debug("Opening log file: {}".format(app_log))
 
         try:
             with open(app_log, "r") as file:
                 for line in file:
-                    log_lines.append(process_line(line))
-        except Exception as e:
-            log.warn("Unable to open and/or read file")
-
-    # Convert text to a JSON format
-    log_text = "[{}]".format(",".join(log_lines))
+                    json_log.append(json.loads(line))
+        except IOError:
+            log.critical(
+                "Unable to open log file (is file in use?)", 
+                exc_info=True
+            )
+        except FileNotFoundError:
+            log.critical(
+                "Unable to find the log at the specified location", 
+                exc_info=True
+            )
+        except Exception:
+            log.critical(
+                "Error processing the provided JSON log", 
+                exc_info=True
+            )
     
-    try:
-        json_log= json.loads(log_text)
-    except Exception as e:
-        log.warn("Unable to load json log: {}".format(e))
-
     # Check if this app is being monitored for proper stop and starts
     if app.flag_start:
         if any(app.flag_start in entry["message"] for entry in json_log):
@@ -593,6 +520,14 @@ for app in app_list:
             log.info("App {} completed properly".format(app.name))
         else:
             log.info("App {} did complete properly".format(app.name))
+
+    # Retrieve the asc_time format and timezone for this app
+    asc_time_format = app.asc_time_format
+
+    if app.log_timezone:
+        log_timezone = pytz.timezone(app.log_timezone)
+    else:
+        log_timezone = pytz.timezone("UTC")
 
     # Process the JSON log and import into the django database
     log.info("Uploading log entries")
@@ -619,10 +554,18 @@ for app in app_list:
         thread = entry["thread"] if "thread" in entry else None
         thread_name = entry["threadName"] if "threadName" in entry else None
         
+        # Convert the asc_time into a proper timezone aware datetime
+        if asc_time:
+            asc_time = log_timezone.localize(
+                datetime.strptime(asc_time, asc_time_format)
+            )
+        else:
+            asc_time = datetime.utcnow()
+
         # Create a new entry for the LogEntry module
         new_entry = LogEntry(
             app_name=app,
-            asc_time=parser.parse(asc_time),
+            asc_time=asc_time,
             created=created,
             exc_info=exc_info,
             file_name=file_name,
@@ -645,13 +588,14 @@ for app in app_list:
         
         try:
             new_entry.save()
-        except Exception as e:
-            log.warn("Unable to save log entry")
+        except Exception:
+            log.error("Unable to save log entry", exc_info=True)
 
     # Update the app last_reviewed_log date and next review date
     if json_log:
         log.debug("Updating the review and next review dates")
-        app.last_reviewed_log = json_log[-1]["asctime"]
+
+        app.last_reviewed_log = asc_time
         app.next_review = determine_next_date(
             app.review_minute,
             app.review_hour,
@@ -662,15 +606,16 @@ for app in app_list:
 
         try:
             app.save()
-        except Exception as e:
-            log.warn("Unable to update AppData object")
+        except Exception:
+            log.error("Unable to update AppData object", exc_info=True)
 
     # Clear the log file contents now that they have been saved in the database
+    
     for app_log in app_logs:
         log.debug("Clearing log file: {}".format(app_log))
 
         try:
             with open(app_log, "w") as file:
                 file.truncate()
-        except Exception as e:
-            log.warn("Unable to clear log file")
+        except Exception:
+            log.error("Unable to clear log file", exc_info=True)
