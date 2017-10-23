@@ -588,7 +588,21 @@ for app in app_list:
         try:
             new_entry.save()
         except Exception:
-            log.error("Unable to save log entry", exc_info=True)
+            log.error(
+                (
+                    "Unable to save log entry for following values: "
+                    "app_name = {} asc_time = {} created = {} exc_info = {} "
+                    "file_name = {} func_name = {} level_name = {} level_no = {} "
+                    "line_no = {} message = {} module = {} msecs = {} name = {} "
+                    "path_name = {} process = {} process_name = {} "
+                    "relative_created = {} stack_info = {} thread = {} "
+                    "thread_name = {}"
+                ).format(
+                    app,asc_time,created,exc_info,file_name,func_name,level_name,
+                    level_no,line_no,message,module,msecs,name,path_name,process,
+                    process_name,relative_created,stack_info,thread,thread_name
+                ),
+                exc_info=True)
 
     # Update the app last_reviewed_log date and next review date
     if json_log:
