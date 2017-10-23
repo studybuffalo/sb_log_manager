@@ -12,7 +12,6 @@ import pytz
 import re
 import sys
 from unipath import Path, FILES
-from dateutil import parser
 
 def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_code):
     """Determines next update date based on the provided criteria"""
