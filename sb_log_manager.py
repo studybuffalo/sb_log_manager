@@ -565,7 +565,7 @@ for app in app_list:
         # Convert the created time into a proper timezone aware datetime
         if created:
             created = log_timezone.localize(
-                datetime.strptime(created, asc_time_format)
+                datetime.strptime(created, "%S.%f")
             )
         else:
             # Default to now if not specified
