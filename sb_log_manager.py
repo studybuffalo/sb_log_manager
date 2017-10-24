@@ -562,15 +562,6 @@ for app in app_list:
             # Default to now if not specified
             asc_time = datetime.utcnow()
 
-        # Convert the created time into a proper timezone aware datetime
-        if created:
-            created = log_timezone.localize(
-                datetime.strptime(created, "%S.%f")
-            )
-        else:
-            # Default to now if not specified
-            created = datetime.utcnow()
-
         # Create a new entry for the LogEntry module
         new_entry = LogEntry(
             app_name=app,
