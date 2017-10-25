@@ -456,7 +456,7 @@ def email_start_failure(app_name, config):
 
     # Attempt to send email
     try:
-        if config.get("debug", "email_console"):
+        if config.getboolean("email", "debug"):
             log.debug(content.as_string())
         else:
             server = smtplib.SMTP(config.get("email", "server"))
@@ -493,7 +493,7 @@ def email_error(app_name, config):
 
     # Attempt to send email
     try:
-        if config.get("debug", "email_console"):
+        if config.getboolean("email", "debug"):
             log.debug(content.as_string())
         else:
             server = smtplib.SMTP(config.get("email", "server"))
@@ -585,7 +585,7 @@ for app in app_list:
 
     # If there are no JSON logs and application start is monitored, 
     # notify user of possible failure for app to start
-    if app.monitored_start and len(json_log) == 0:
+    if app.monitor_start and len(json_log) == 0:
         email_start_failure(app.name, config)
 
     # Retrieve the asc_time format and timezone for this app
@@ -601,6 +601,9 @@ for app in app_list:
 
     # Whether a log entry has a level of warning or higher
     warn_log_entry = False 
+
+    # Placeholder declartion to keep it in the needed scope
+    asc_time = log_timezone.localize(datetime.utcnow())
 
     for entry in json_log:
         # Extract all the json values
@@ -631,7 +634,7 @@ for app in app_list:
             )
         else:
             # Default to now if not specified
-            asc_time = datetime.utcnow()
+            asc_time = log_timezone.localize(datetime.utcnow())
 
         # Check for an error level of warning or higher
         if level_no >= 30:
@@ -685,22 +688,21 @@ for app in app_list:
         email_error(app.name, config)
 
     # Update the app last_reviewed_log date and next review date
-    if json_log:
-        log.debug("Updating the review and next review dates")
+    log.debug("Updating the review and next review dates")
 
-        app.last_reviewed_log = asc_time
-        app.next_review = determine_next_date(
-            app.review_minute,
-            app.review_hour,
-            app.review_day,
-            app.review_month,
-            app.review_weekday
-        )
+    app.last_reviewed_log = asc_time
+    app.next_review = determine_next_date(
+        app.review_minute,
+        app.review_hour,
+        app.review_day,
+        app.review_month,
+        app.review_weekday
+    )
 
-        try:
-            app.save()
-        except Exception:
-            log.error("Unable to update AppData object", exc_info=True)
+    try:
+        app.save()
+    except Exception:
+        log.error("Unable to update AppData object", exc_info=True)
 
     # Clear the log file contents now that they have been saved in the database
     for app_log in app_logs:
