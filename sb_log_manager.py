@@ -4,12 +4,15 @@
 import configparser
 from datetime import datetime, timedelta
 from django.core.wsgi import get_wsgi_application
+from email.mime.text import MIMEText
+from email.utils import formataddr
 import json
 import logging
 import logging.config
 import os
 import pytz
 import re
+
 import sys
 from unipath import Path, FILES
 
@@ -428,6 +431,80 @@ def determine_next_date(minute_code, hour_code, day_code, month_code, weekday_co
 
     return next_datetime
 
+def email_start_failure(app_name, config):
+    log.debug("Notifying owner of app failing to start")
+
+    from_name = config.get("email", "from_name")
+    from_email = config.get("email", "from_email")
+    from_address = formataddr((from_name, from_email))
+
+    to_name = config.get("email", "to_name")
+    to_email = config.get("email", "to_name")
+    to_address = formataddr((to_name, to_email))
+       
+    subject = "App ({}) Failed To Start".format(app_name)
+        
+    message = (
+        "This email is to notify you that the {} application did not "
+        "start on time. Please view the monitored logs for further details."
+    )
+
+    content = MIMEText(message)
+    content['From'] = from_address
+    content['To'] = to_address
+    content['Subject'] = subject
+
+    # Attempt to send email
+    try:
+        if config.get("debug", "email_console"):
+            log.debug(content.as_string())
+        else:
+            server = smtplib.SMTP(config.get("email", "server"))
+
+            server.ehlo()
+            server.starttls()
+            server.sendmail(from_address, to_address, content.as_string())
+            server.quit()
+    except Exception:
+        log.error("Unable to send notification to user", exc_info=True)
+        
+def email_error(app_name, config):
+    log.debug("Notifying owner of errors with monitored applications")
+    
+    from_name = config.get("email", "from_name")
+    from_email = config.get("email", "from_email")
+    from_address = formataddr((from_name, from_email))
+
+    to_name = config.get("email", "to_name")
+    to_email = config.get("email", "to_name")
+    to_address = formataddr((to_name, to_email))
+       
+    subject = "Errors in App ({})".format(app_name)
+        
+    message = (
+        "This email is to notify you that there we errors noted in the "
+        "{} application. Please view the monitored logs for further details."
+    )
+
+    content = MIMEText(message)
+    content['From'] = from_address
+    content['To'] = to_address
+    content['Subject'] = subject
+
+    # Attempt to send email
+    try:
+        if config.get("debug", "email_console"):
+            log.debug(content.as_string())
+        else:
+            server = smtplib.SMTP(config.get("email", "server"))
+
+            server.ehlo()
+            server.starttls()
+            server.sendmail(from_address, to_address, content.as_string())
+            server.quit()
+    except Exception:
+        log.error("Unable to send notification to user", exc_info=True)
+        
 # Setup the root path
 root = Path(sys.argv[1])
 
@@ -478,9 +555,8 @@ for app in app_list:
             log.debug("Regex matches file name")
 
             app_logs.append(log_directory.child(file))
-
+    
     # Open the log(s) and form them into a single json file
-    log_lines = []
     json_log = []
 
     # Cycle through all the log files and create a list of the entries
@@ -506,19 +582,11 @@ for app in app_list:
                 "Error processing the provided JSON log", 
                 exc_info=True
             )
-    
-    # Check if this app is being monitored for proper stop and starts
-    if app.flag_start:
-        if any(app.flag_start in entry["message"] for entry in json_log):
-            log.info("App {} has started properly".format(app.name))
-        else:
-            log.info("App {} did not start properly".format(app.name))
 
-    if app.flag_end:
-        if any(app.flag_end in entry["message"] for entry in json_log):
-            log.info("App {} completed properly".format(app.name))
-        else:
-            log.info("App {} did complete properly".format(app.name))
+    # If there are no JSON logs and application start is monitored, 
+    # notify user of possible failure for app to start
+    if app.monitored_start and len(json_log) == 0:
+        email_start_failure(app.name, config)
 
     # Retrieve the asc_time format and timezone for this app
     asc_time_format = app.asc_time_format
@@ -530,6 +598,9 @@ for app in app_list:
 
     # Process the JSON log and import into the django database
     log.info("Uploading log entries")
+
+    # Whether a log entry has a level of warning or higher
+    warn_log_entry = False 
 
     for entry in json_log:
         # Extract all the json values
@@ -561,6 +632,10 @@ for app in app_list:
         else:
             # Default to now if not specified
             asc_time = datetime.utcnow()
+
+        # Check for an error level of warning or higher
+        if level_no >= 30:
+            warn_log_entry = True
 
         # Create a new entry for the LogEntry module
         new_entry = LogEntry(
@@ -605,6 +680,10 @@ for app in app_list:
                 ),
                 exc_info=True)
 
+    # Notify user if an error is present
+    if warn_log_entry:
+        email_error(app.name, config)
+
     # Update the app last_reviewed_log date and next review date
     if json_log:
         log.debug("Updating the review and next review dates")
@@ -624,7 +703,6 @@ for app in app_list:
             log.error("Unable to update AppData object", exc_info=True)
 
     # Clear the log file contents now that they have been saved in the database
-    
     for app_log in app_logs:
         log.debug("Clearing log file: {}".format(app_log))
 
