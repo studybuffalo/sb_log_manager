@@ -587,6 +587,7 @@ for app in app_list:
     # If there are no JSON logs and application start is monitored, 
     # notify user of possible failure for app to start
     if app.monitor_start and len(json_log) == 0:
+        log.debug("Emailing user about failed application start")
         email_start_failure(app.name, config)
 
     # Retrieve the asc_time format and timezone for this app
@@ -686,6 +687,7 @@ for app in app_list:
 
     # Notify user if an error is present
     if warn_log_entry:
+        log.debug("Emailing user about detected error in logs")
         email_error(app.name, config)
 
     # Update the app last_reviewed_log date and next review date
