@@ -440,7 +440,7 @@ def email_start_failure(app_name, config):
     from_address = formataddr((from_name, from_email))
 
     to_name = config.get("email", "to_name")
-    to_email = config.get("email", "to_name")
+    to_email = config.get("email", "to_email")
     to_address = formataddr((to_name, to_email))
        
     subject = "App ({}) Failed To Start".format(app_name)
@@ -477,7 +477,7 @@ def email_error(app_name, config):
     from_address = formataddr((from_name, from_email))
 
     to_name = config.get("email", "to_name")
-    to_email = config.get("email", "to_name")
+    to_email = config.get("email", "to_email")
     to_address = formataddr((to_name, to_email))
        
     subject = "Errors in App ({})".format(app_name)
