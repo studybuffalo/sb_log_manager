@@ -443,12 +443,12 @@ def email_start_failure(app_name, config):
     to_email = config.get("email", "to_email")
     to_address = formataddr((to_name, to_email))
        
-    subject = "App ({}) Failed To Start".format(app_name)
+    subject = "{} Application Failed To Start".format(app_name)
         
     message = (
         "This email is to notify you that the {} application did not "
         "start on time. Please view the monitored logs for further details."
-    )
+    ).format(app_name)
 
     content = MIMEText(message)
     content['From'] = from_address
@@ -480,12 +480,12 @@ def email_error(app_name, config):
     to_email = config.get("email", "to_email")
     to_address = formataddr((to_name, to_email))
        
-    subject = "Errors in App ({})".format(app_name)
+    subject = "Errors in {} Application".format(app_name)
         
     message = (
         "This email is to notify you that there we errors noted in the "
         "{} application. Please view the monitored logs for further details."
-    )
+    ).format(app_name)
 
     content = MIMEText(message)
     content['From'] = from_address
