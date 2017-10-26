@@ -11,6 +11,7 @@ import logging
 import logging.config
 import os
 import pytz
+import smtplib
 import re
 
 import sys
